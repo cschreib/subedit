@@ -601,7 +601,6 @@ int main(int argc, char* argv[]) {
 
                 if (s.size() == 1) {
                     num = 1;
-
                 } else {
                     s = string::erase_start(s, 1);
                     if (!string::from_string(s, num)) {
