@@ -1,0 +1,73 @@
+cmake_minimum_required(VERSION 2.8)
+
+# project name
+project(subedit)
+
+# setup version numbers
+set(VERSION_MAJOR 1)
+set(VERSION_MINOR 0)
+
+# check compiler version for C++11 features
+if(CMAKE_COMPILER_IS_GNUCXX)
+    add_definitions(-Wall)
+    add_definitions(-O2)
+    if(CMAKE_BUILD_TYPE MATCHES Debug)
+        add_definitions(-g)
+    endif()
+
+    execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpversion
+                    OUTPUT_VARIABLE GCC_VERSION)
+
+    string(REGEX MATCHALL "[0-9]+" GCC_VERSION_COMPONENTS ${GCC_VERSION})
+    list(GET GCC_VERSION_COMPONENTS 0 GCC_MAJOR)
+    list(GET GCC_VERSION_COMPONENTS 1 GCC_MINOR)
+    set(GCC_VERSION ${GCC_MAJOR}.${GCC_MINOR})
+
+    if(GCC_VERSION VERSION_EQUAL 4.6)
+        message(STATUS "gcc version >= 4.6 (${GCC_VERSION})")
+        add_definitions(-std=c++0x)
+    elseif(GCC_VERSION VERSION_GREATER 4.6)
+        message(STATUS "gcc version >= 4.6 (${GCC_VERSION})")
+        add_definitions(-std=c++11)
+    else()
+        message(ERROR "subedit requires advanced features from the C++11 norm that are only available with gcc 4.6 or higher (your version: ${GCC_VERSION}). Please upgrade your compiler.")
+    endif()
+elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 2.99)
+        message(STATUS "clang version >= 3.0 (${CMAKE_CXX_COMPILER_VERSION})")
+    else()
+        message(ERROR "subedit requires advanced features from the C++11 norm that are only available with clang 3.0 or higher (your version: ${CMAKE_CXX_COMPILER_VERSION}). Please upgrade your compiler.")
+    endif()
+
+    add_definitions(-Weverything)
+    add_definitions(-Wno-c++98-compat-pedantic)
+    add_definitions(-Wno-c++98-compat)
+    add_definitions(-Wno-unused-parameter)
+    add_definitions(-Wno-sign-conversion)
+    add_definitions(-Wno-conversion)
+    add_definitions(-Wno-missing-variable-declarations)
+    add_definitions(-Wno-missing-prototypes)
+    add_definitions(-Wno-padded)
+    add_definitions(-Wno-float-equal)
+    add_definitions(-Wno-unused-variable)
+    add_definitions(-Wno-global-constructors)
+    add_definitions(-Wno-exit-time-destructors)
+    add_definitions(-Wno-weak-vtables)
+    add_definitions(-Wno-covered-switch-default)
+    add_definitions(-Wno-documentation-unknown-command)
+    add_definitions(-Wno-unneeded-internal-declaration)
+    add_definitions(-Wno-unused-function)
+    add_definitions(-Wno-unused-macros)
+    add_definitions(-Wno-switch-enum)
+    if(CMAKE_BUILD_TYPE MATCHES Debug)
+        add_definitions(-g)
+    else()
+        add_definitions(-O3)
+    endif()
+    add_definitions(-std=c++11)
+else()
+    message(WARNING "your compiler has not been setup by the CMake script, do not expect it to work")
+endif()
+
+add_executable(subedit ${PROJECT_SOURCE_DIR}/subedit.cpp)
+
