@@ -50,6 +50,23 @@ namespace string {
         return (ss >> t);
     }
 
+    std::string trim(std::string s, const std::string& chars = " \t") {
+        std::size_t spos = s.find_first_of(chars);
+        if (spos == 0) {
+            std::size_t epos = s.find_first_not_of(chars);
+            if (epos == s.npos) return "";
+            s = s.substr(epos);
+        }
+
+        spos = s.find_last_of(chars);
+        if (spos == s.size()-1) {
+            std::size_t epos = s.find_last_not_of(chars);
+            s = s.erase(epos+1, s.size() - epos+1);
+        }
+
+        return s;
+    }
+
     std::string to_lower(std::string s) {
         for (auto& c : s) {
             c = ::tolower(c);
@@ -66,13 +83,12 @@ namespace string {
         return s;
     }
 
-    template<typename T>
-    std::vector<std::string> cut(const std::string& ts, const T& pattern) {
+    std::vector<std::string> cut(const std::string& ts, const std::string& pattern) {
         std::vector<std::string> ret;
         std::size_t p = 0, op = 0;
         while ((p = ts.find(pattern, op)) != ts.npos) {
             ret.push_back(ts.substr(op, p - op));
-            op = p+1;
+            op = p + pattern.size();
         }
 
         ret.push_back(ts.substr(op));
@@ -108,21 +124,18 @@ namespace string {
 }
 
 struct time_key {
-    int seconds;
-    int milliseconds;
-
     time_key() : seconds(-1), milliseconds(-1) {}
 
-    time_key(float sec) : seconds(floor(sec)), milliseconds((sec - floor(sec))*1000) {}
+    explicit time_key(float sec) : seconds(floor(sec)), milliseconds((sec - floor(sec))*1000) {}
 
-    explicit time_key(const std::string& str) : seconds(0), milliseconds(0) {
-        std::vector<std::string> words = string::cut(str, ":");
+    time_key(const std::string& str, std::string& err) : seconds(0), milliseconds(0) {
+        std::vector<std::string> words = string::cut(string::trim(str), ":");
         std::vector<std::string>::iterator iter = words.begin();
         int tmp = 0;
 
         if (words.size() == 3) {
             if (!string::from_string(*iter, tmp)) {
-                error("invalid number of hours\n");
+                err = "invalid number of hours";
                 seconds = milliseconds = -1;
                 return;
             } else {
@@ -134,7 +147,7 @@ struct time_key {
 
         if (words.size() >= 2) {
             if (!string::from_string(*iter, tmp)) {
-                error("invalid number of minutes\n");
+                err = "invalid number of minutes";
                 seconds = milliseconds = -1;
                 return;
             } else {
@@ -146,7 +159,7 @@ struct time_key {
 
         words = string::cut(*iter, ",");
         if (!string::from_string(words.front(), tmp)) {
-            error("invalid number of seconds\n");
+            err = "invalid number of seconds";
             seconds = milliseconds = -1;
             return;
         } else {
@@ -155,66 +168,54 @@ struct time_key {
 
         if (words.size() == 2) {
             if (!string::from_string(words.back(), milliseconds)) {
-                error("invalid number of milliseconds\n");
+                err = "invalid number of milliseconds";
                 seconds = milliseconds = -1;
                 return;
             }
         }
+
+        normalize_();
     }
 
     time_key(int sec, int msec) : seconds(sec), milliseconds(msec) {
-        while (milliseconds >= 1000) {
-            ++seconds;
-            milliseconds -= 1000;
-        }
-        while (milliseconds < 0) {
-            --seconds;
-            milliseconds += 1000;
-        }
+        normalize_();
     }
 
     bool valid() const {
         return seconds != -1 && milliseconds != -1;
     }
 
-    time_key operator + (const time_key& t) const {
-        return time_key(seconds + t.seconds, milliseconds + t.milliseconds);
-    }
-
-    time_key& operator += (const time_key& t) {
-        seconds += t.seconds;
-        milliseconds += t.milliseconds;
-
-        while (milliseconds >= 1000) {
-            ++seconds;
-            milliseconds -= 1000;
-        }
-        while (milliseconds < 0) {
-            --seconds;
-            milliseconds += 1000;
-        }
-
+    time_key& operator += (float sec) {
+        seconds += floor(sec);
+        milliseconds += (sec - floor(sec))*1000;
+        normalize_();
         return *this;
     }
 
-    time_key operator - (const time_key& t) const {
-        return time_key(seconds - t.seconds, milliseconds - t.milliseconds);
+    time_key& operator -= (float sec) {
+        seconds -= floor(sec);
+        milliseconds -= (sec - floor(sec))*1000;
+        normalize_();
+        return *this;
     }
 
-    time_key& operator -= (const time_key& t) {
-        seconds -= t.seconds;
-        milliseconds -= t.milliseconds;
+    time_key operator + (float sec) const {
+        time_key tmp(*this);
+        tmp += sec;
+        return tmp;
+    }
 
-        while (milliseconds >= 1000) {
-            ++seconds;
-            milliseconds -= 1000;
-        }
-        while (milliseconds < 0) {
-            --seconds;
-            milliseconds += 1000;
-        }
+    time_key operator - (float sec) const {
+        time_key tmp(*this);
+        tmp -= sec;
+        return tmp;
+    }
 
-        return *this;
+    float operator - (const time_key& t) const {
+        int sec = seconds - t.seconds;
+        int msec = milliseconds - t.milliseconds;
+        normalize_(sec, msec);
+        return sec + msec/1000.0f;
     }
 
     bool operator < (const time_key& t) const {
@@ -248,16 +249,36 @@ struct time_key {
             return (seconds >= t.seconds);
         }
     }
+
+private :
+    int seconds;
+    int milliseconds;
+
+    static void normalize_(int& sec, int& msec) {
+        while (msec >= 1000) {
+            ++sec;
+            msec -= 1000;
+        }
+        while (msec < 0) {
+            --sec;
+            msec += 1000;
+        }
+    }
+
+    void normalize_() {
+        if (!valid()) return;
+        normalize_(seconds, milliseconds);
+    }
+
+    friend std::ostream& operator << (std::ostream& o, const time_key& t) {
+        int hour = t.seconds/3600;
+        int min = (t.seconds - hour*3600)/60;
+        int sec = (t.seconds - hour*3600 - min*60);
+
+        return o << string::convert(hour, 2) << ":" << string::convert(min, 2)
+            << ":" << string::convert(sec, 2) << "," << string::convert(t.milliseconds, 3);
+    }
 };
-
-std::ostream& operator << (std::ostream& o, const time_key& t) {
-    int hour = t.seconds/3600;
-    int min = (t.seconds - hour*3600)/60;
-    int sec = (t.seconds - hour*3600 - min*60);
-
-    return o << string::convert(hour, 2) << ":" << string::convert(min, 2)
-        << ":" << string::convert(sec, 2) << "," << string::convert(t.milliseconds, 3);
-}
 
 struct entry {
     std::size_t id;
@@ -274,7 +295,7 @@ bool find_next(std::vector<entry>& array, std::vector<entry>::iterator& iter,
     const std::string& str) {
 
     while (iter != array.end()) {
-        if (iter->content.find(str)) {
+        if (iter->content.find(str) != std::string::npos) {
             return true;
         }
 
@@ -290,7 +311,7 @@ bool find_previous(std::vector<entry>& array, std::vector<entry>::iterator& iter
     while (iter != array.begin()) {
         --iter;
 
-        if (iter->content.find(str)) {
+        if (iter->content.find(str) != std::string::npos) {
             return true;
         }
     }
@@ -315,7 +336,7 @@ void print_help() {
 
     print("Available search commands:");
     print("  hh:mm:ss,mili : select the sentence just after the provided time stamp");
-    print("  any text      : search for occurences of 'any text', enters search mode");
+    print("  any text      : search for the first occurence of 'any text' and enters search mode");
     print("  ?             : exit search mode");
     print("  #n            : select the 'n'th sentence ('n'th occurence in search mode)");
     print("  +x            : advance 'x' times (next occurences in search mode)");
@@ -351,6 +372,7 @@ int main(int argc, char* argv[]) {
             getline(file, line);
 
             if (!line.empty()) {
+                line = string::trim(line);
                 if (count == 0) {
                     if (!string::from_string(line, e.id)) {
                         error(l, ": bad entry ID");
@@ -359,8 +381,19 @@ int main(int argc, char* argv[]) {
                 } else if (count == 1) {
                     std::vector<std::string> words = string::cut(line, " --> ");
                     if (words.size() == 2) {
-                        e.start = time_key(words.front());
-                        e.end = time_key(words.back());
+                        std::string err;
+                        e.start = time_key(words.front(), err);
+                        if (!e.start.valid()) {
+                            error(err);
+                            note("parsing l.", l, " start time (", words.front(), ")");
+                        }
+
+                        err.clear();
+                        e.end = time_key(words.back(), err);
+                        if (!e.end.valid()) {
+                            error(err);
+                            note("parsing l.", l, " end time (", words.back(), ")");
+                        }
                     } else {
                         error(l, ": bad time tag format (expected <time1> --> <time2>)");
                         return 1;
@@ -405,11 +438,12 @@ int main(int argc, char* argv[]) {
 
         std::string s;
         getline(std::cin, s);
+        s = string::trim(s);
         std::string low = string::to_lower(s);
 
         if (s.empty()) {
             no_display = true;
-            print("\nhow many seconds do you want to add / remove (empty to abord)? ");
+            put("\ncorrected time (empty to abord)? ");
 
             float sec = 0.0f;
             bool stop = false;
@@ -421,11 +455,25 @@ int main(int argc, char* argv[]) {
                     break;
                 }
 
-                if (!string::from_string(s, sec)) {
-                    error("invalid time duration, please enter a floating point number (or nothing "
-                        "to abort): ");
+                s = string::trim(s);
+                if (s[0] == '+' || s[0] == '-') {
+                    if (!string::from_string(s, sec)) {
+                        error("invalid time duration, please enter a time stamp, a number, or nothing "
+                            "to abort): ");
+                    } else {
+                        break;
+                    }
                 } else {
-                    break;
+                    std::string err;
+                    time_key tmp(s, err);
+                    if (!tmp.valid()) {
+                        error(err, ", please enter a time stamp, a number, or nothing "
+                            "to abort): ");
+                    } else {
+                        sec = tmp - iter->start;
+                        note("shifting by ", (sec > 0 ? "+" : ""), sec, " seconds");
+                        break;
+                    }
                 }
             }
 
@@ -444,7 +492,7 @@ int main(int argc, char* argv[]) {
                 ++count;
             }
 
-            put("done (", count, " entries modified).\nSaving... ");
+            put("done (", count, " entries modified).\nsaving... ");
 
             std::ofstream file(file_name);
 
@@ -512,30 +560,15 @@ int main(int argc, char* argv[]) {
                     key = iter->start;
                 }
             } else if (c == '?') {
-                search_string = string::erase_start(s, 1);
-
-                if (search_string.empty()) {
+                if (search_mode) {
                     search_mode = false;
                     no_display = true;
-                    continue;
+                    note("leaving search mode");
+                } else {
+                    no_display = true;
+                    error("you are not in search mode");
                 }
-
-                std::vector<entry>::iterator old = iter;
-                bool res = find_next(entries, iter, search_string);
-                if (!res) {
-                    iter = entries.begin();
-                    res = find_next(entries, iter, search_string);
-
-                    if (!res) {
-                        error("no match for '"+search_string+"'\n");
-                        no_display = true;
-                        iter = old;
-                        key = iter->start;
-                        continue;
-                    }
-                }
-
-                search_mode = true;
+                continue;
             } else if (c == '+') {
                 std::size_t num;
 
@@ -657,14 +690,17 @@ int main(int argc, char* argv[]) {
                     }
                 }
             } else {
-                time_key tmp = time_key(s);
+                std::string err;
+                time_key tmp = time_key(s, err);
                 if (tmp.valid()) {
                     std::vector<entry>::iterator old = iter;
 
-                    for (auto& e : entries) {
-                        if (e.start >= tmp) {
+                    iter = entries.begin();
+                    while (iter != entries.end()) {
+                        if (iter->start >= tmp) {
                             break;
                         }
+                        ++iter;
                     }
 
                     if (iter == entries.end()) {
@@ -676,24 +712,27 @@ int main(int argc, char* argv[]) {
 
                     key = iter->start;
                 } else {
-                    search_string = s;
-
-                    std::vector<entry>::iterator old = iter;
-                    bool res = find_next(entries, iter, search_string);
-                    if (!res) {
-                        iter = entries.begin();
-                        res = find_next(entries, iter, search_string);
-
+                    search_string = string::trim(string::trim(s), "\"\'");
+                    if (!search_string.empty()) {
+                        note("entering search mode for '", search_string, "'");
+                        std::vector<entry>::iterator old = iter;
+                        bool res = find_next(entries, iter, search_string);
                         if (!res) {
-                            error("no match for '"+search_string+"'\n");
-                            no_display = true;
-                            iter = old;
-                            key = iter->start;
-                            continue;
-                        }
-                    }
+                            note("no further match from this point, starting over from begining");
+                            iter = entries.begin();
+                            res = find_next(entries, iter, search_string);
 
-                    search_mode = true;
+                            if (!res) {
+                                error("no match for '"+search_string+"'\n");
+                                no_display = true;
+                                iter = old;
+                                key = iter->start;
+                                continue;
+                            }
+                        }
+
+                        search_mode = true;
+                    }
                 }
             }
         }
