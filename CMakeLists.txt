@@ -71,3 +71,5 @@ endif()
 
 add_executable(subedit ${PROJECT_SOURCE_DIR}/subedit.cpp)
 
+install(PROGRAMS ${CMAKE_BINARY_DIR}/subedit DESTINATION bin)
+
