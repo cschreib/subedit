@@ -288,7 +288,7 @@ struct entry {
 };
 
 std::ostream& operator << (std::ostream& o, const entry& e) {
-    return o << e.id << "\n" << e.start << " --> " << e.end << "\n" << e.content;
+    return o << e.id << "\n" << e.start << " --> " << e.end << "\n" << e.content << "\n";
 }
 
 bool find_next(std::vector<entry>& array, std::vector<entry>::iterator& iter,
@@ -326,7 +326,7 @@ void print_help() {
     print("  Its only function for now it to be able to add a delay to a");
     print("  particular sentence, shifting all the following ones.");
     print("  To do so, you must first pick the sentence you want to shift");
-    print("  (using any of the various possibilities discribed below),");
+    print("  (using any of the various possibilities described below),");
     print("  then press 'Enter' to input the amount of seconds you want");
     print("  to add/remove. The program will update the subtitle accordingly");
     print("  and save it right away, so you can immediately check the result");
@@ -336,18 +336,19 @@ void print_help() {
 
     print("Available search commands:");
     print("  hh:mm:ss,mili : select the sentence just after the provided time stamp");
-    print("  any text      : search for the first occurence of 'any text' and enters search mode");
+    print("  any text      : search for the first occurrence of 'any text' and enters search mode");
     print("  ?             : exit search mode");
-    print("  #n            : select the 'n'th sentence ('n'th occurence in search mode)");
-    print("  +x            : advance 'x' times (next occurences in search mode)");
-    print("  +             : advance once (next occurence in search mode)");
-    print("  -x            : step back 'x' times (previous occurences in search mode)");
-    print("  -             : step back once (previous occurence in search mode)\n");
+    print("  #n            : select the 'n'th sentence ('n'th occurrence in search mode)");
+    print("  +x            : advance 'x' times (next occurrences in search mode)");
+    print("  +             : advance once (next occurrence in search mode)");
+    print("  -x            : step back 'x' times (previous occurrences in search mode)");
+    print("  -             : step back once (previous occurrence in search mode)\n");
+    print("  .             : recall the current sentence\n");
 
     print("Other commands:");
-    print("  'empty'       : starts editing the current sentence's time stamp");
-    print("  help or h     : displays this text");
-    print("  quit or q     : exits the program\n");
+    print("  'empty'       : start editing the current sentence's time stamp");
+    print("  help or h     : display this text");
+    print("  quit or q     : exit the program\n");
 }
 
 int main(int argc, char* argv[]) {
@@ -375,7 +376,8 @@ int main(int argc, char* argv[]) {
                 line = string::trim(line);
                 if (count == 0) {
                     if (!string::from_string(line, e.id)) {
-                        error(l, ": bad entry ID");
+                        error("bad entry ID ('", line, "')");
+                        note("parsing l.", l);
                         return 1;
                     }
                 } else if (count == 1) {
@@ -386,6 +388,7 @@ int main(int argc, char* argv[]) {
                         if (!e.start.valid()) {
                             error(err);
                             note("parsing l.", l, " start time (", words.front(), ")");
+                            return 1;
                         }
 
                         err.clear();
@@ -393,9 +396,12 @@ int main(int argc, char* argv[]) {
                         if (!e.end.valid()) {
                             error(err);
                             note("parsing l.", l, " end time (", words.back(), ")");
+                            return 1;
                         }
                     } else {
-                        error(l, ": bad time tag format (expected <time1> --> <time2>)");
+                        error("bad time tag format ('", line, "')");
+                        note("expected <time1> --> <time2>");
+                        note("parsing l.", l);
                         return 1;
                     }
                 } else {
@@ -411,7 +417,7 @@ int main(int argc, char* argv[]) {
 
         file.close();
 
-        print("subtitle successfully loaded!");
+        note("subtitle successfully loaded!");
     } else {
         print_help();
         return 0;
@@ -422,14 +428,11 @@ int main(int argc, char* argv[]) {
     bool no_display = true;
     bool search_mode = false;
     std::string search_string = "";
-    time_key key;
     std::vector<entry>::iterator iter = entries.begin();
 
     while (true) {
-        if (!no_display) {
-            if (iter != entries.end()) {
-                print("\n[", iter - entries.begin(), "] ", iter->start, " :\n\n", iter->content);
-            }
+        if (!no_display && iter != entries.end()) {
+            print("\n[", iter - entries.begin(), "] ", iter->start, " :\n\n", iter->content);
         }
 
         no_display = false;
@@ -443,7 +446,7 @@ int main(int argc, char* argv[]) {
 
         if (s.empty()) {
             no_display = true;
-            put("\ncorrected time (empty to abord)? ");
+            put("\ncorrected time (empty to abord): ");
 
             float sec = 0.0f;
             bool stop = false;
@@ -482,17 +485,14 @@ int main(int argc, char* argv[]) {
                 continue;
             }
 
-            put("editing subtitle, please wait... ");
+            put("note: editing subtitle, please wait... ");
 
-            std::size_t count = 0;
-            while (iter != entries.end()) {
-                iter->start += sec;
-                iter->end += sec;
-                ++iter;
-                ++count;
+            for (auto iter_tmp = iter; iter_tmp != entries.end(); ++iter_tmp) {
+                iter_tmp->start += sec;
+                iter_tmp->end += sec;
             }
 
-            put("done (", count, " entries modified).\nsaving... ");
+            put("done (", entries.end() - iter, " entries modified).\nnote: saving... ");
 
             std::ofstream file(file_name);
 
@@ -502,7 +502,9 @@ int main(int argc, char* argv[]) {
 
             file.close();
 
-            print(" done.");
+            print(" done.\n");
+            no_display = false;
+
             continue;
         } else if (low == "q" || low == "quit") {
             return 0;
@@ -514,6 +516,7 @@ int main(int argc, char* argv[]) {
             char c = s[0];
             if (c == '#') {
                 s = string::erase_start(s, 1);
+
                 std::size_t num = 0;
                 if (!string::from_string(s, num)) {
                     error("invalid number of entry\n");
@@ -522,42 +525,30 @@ int main(int argc, char* argv[]) {
                 }
 
                 if (!search_mode) {
-                    std::vector<entry>::iterator old = iter;
-                    iter = entries.begin();
-                    std::size_t i = num;
-                    while (iter != entries.end() && i != 0) {
-                        --i;
-                        ++iter;
-                    }
-
-                    if (iter == entries.end()) {
+                    if (num >= entries.size()) {
                         error("not enough entries (max : ", entries.size()-1, ")\n");
                         no_display = true;
-                        iter = old;
                         continue;
                     }
 
-                    key = iter->start;
+                    iter = entries.begin() + num;
                 } else {
-                    ++num;
                     std::vector<entry>::iterator old = iter;
                     iter = entries.begin();
                     bool res = find_next(entries, iter, search_string);
-                    --num;
 
-                    while (res && num != 0) {
+                    std::size_t i = num;
+                    while (res && i != 0) {
                         old = iter;
                         ++iter;
                         res = find_next(entries, iter, search_string);
-                        --num;
+                        --i;
                     }
 
                     if (!res) {
                         error("no further matches, displaying last one\n");
                         iter = old;
                     }
-
-                    key = iter->start;
                 }
             } else if (c == '?') {
                 if (search_mode) {
@@ -566,9 +557,11 @@ int main(int argc, char* argv[]) {
                     note("leaving search mode");
                 } else {
                     no_display = true;
-                    error("you are not in search mode");
+                    note("you are not in search mode");
                 }
                 continue;
+            } else if (c == '.') {
+                // Just recall current entry, nothing to do
             } else if (c == '+') {
                 std::size_t num;
 
@@ -584,26 +577,19 @@ int main(int argc, char* argv[]) {
                 }
 
                 if (!search_mode) {
-                    std::size_t i = num;
-                    while (iter != entries.end() && i != 0) {
-                        ++iter;
-                        --i;
-                    }
-
-                    if (iter == entries.end()) {
-                        --iter;
+                    if (num >= std::size_t(entries.end() - iter)) {
                         if (num == 1) {
                             error("no further entry\n");
                             no_display = true;
                         } else {
-                            error("only ", num-i, " further entries, displaying last one\n");
-                            key = iter->start;
+                            error("only ", entries.end() - iter, " further entries, displaying "
+                                "last one\n");
                         }
 
                         continue;
                     }
 
-                    key = iter->start;
+                    iter += num;
                 } else {
                     std::vector<entry>::iterator old = iter;
                     bool res = true;
@@ -626,8 +612,6 @@ int main(int argc, char* argv[]) {
                             error("only ", num-i, " further matches, displaying last one\n");
                         }
                     }
-
-                    key = iter->start;
                 }
             } else if (c == '-') {
                 std::size_t num;
@@ -644,27 +628,18 @@ int main(int argc, char* argv[]) {
                 }
 
                 if (!search_mode) {
-                    std::vector<entry>::iterator old = iter;
-                    std::size_t i = num;
-                    while (iter != entries.begin() && i != 0) {
-                        --iter;
-                        --i;
-                    }
-
-                    if (iter == entries.begin() && i != 0) {
-                        iter = old;
-
+                    if (num > std::size_t(iter - entries.begin())) {
                         if (num == 1) {
                             error("no entry before this point\n");
                             no_display = true;
                             continue;
                         } else {
-                            error("only ", num-i, " entries before this point, displaying first "
-                                "one\n");
+                            error("only ", iter - entries.begin(), " entries before this point, "
+                                "displaying first one\n");
                         }
                     }
 
-                    key = iter->start;
+                    iter -= num;
                 } else {
                     std::vector<entry>::iterator old = iter;
                     bool res = true;
@@ -683,7 +658,6 @@ int main(int argc, char* argv[]) {
                         } else {
                             error("only ", num-i, " matches before this point, displaying first "
                                 "one\n");
-                            key = iter->start;
                         }
 
                         continue;
@@ -709,28 +683,28 @@ int main(int argc, char* argv[]) {
                         iter = old;
                         continue;
                     }
-
-                    key = iter->start;
                 } else {
-                    search_string = string::trim(string::trim(s), "\"\'");
-                    if (!search_string.empty()) {
-                        note("entering search mode for '", search_string, "'");
+                    std::string tmp = string::trim(string::trim(s), "\"\'");
+                    if (!tmp.empty()) {
                         std::vector<entry>::iterator old = iter;
-                        bool res = find_next(entries, iter, search_string);
+                        bool res = find_next(entries, iter, tmp);
                         if (!res) {
-                            note("no further match from this point, starting over from begining");
-                            iter = entries.begin();
-                            res = find_next(entries, iter, search_string);
+                            if (old != entries.begin()) {
+                                note("no further match from this point, starting over from begining");
+                                iter = entries.begin();
+                                res = find_next(entries, iter, tmp);
+                            }
 
                             if (!res) {
-                                error("no match for '"+search_string+"'\n");
+                                error("no match for '"+tmp+"'\n");
                                 no_display = true;
                                 iter = old;
-                                key = iter->start;
                                 continue;
                             }
                         }
 
+                        search_string = tmp;
+                        note("entering search mode for '", search_string, "' (type '?' to stop)");
                         search_mode = true;
                     }
                 }
